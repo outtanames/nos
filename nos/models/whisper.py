@@ -9,6 +9,7 @@ from nos.common import TaskType
 from nos.hub import HuggingFaceHubConfig
 from nos.logging import logger
 
+import numpy as np
 
 @dataclass(frozen=True)
 class WhisperConfig(HuggingFaceHubConfig):
@@ -84,6 +85,16 @@ class Whisper:
                 str(path), chunk_length_s=chunk_length_s, batch_size=batch_size, return_timestamps=return_timestamps
             )
             return response["chunks"]
+        
+    def transcribe_raw(
+        self, raw: np.ndarray, chunk_length_s: int = 30, batch_size: int = 24, return_timestamps: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Transcribe the audio file."""
+        with torch.inference_mode():
+            response = self.pipe(
+                raw, chunk_length_s=chunk_length_s, batch_size=batch_size, return_timestamps=return_timestamps
+            )
+            return response["chunks"]
 
 
 for model_name in Whisper.configs:
@@ -95,5 +106,15 @@ for model_name in Whisper.configs:
         init_args=(model_name,),
         method="transcribe",
         inputs={"path": Path, "chunk_length_s": int, "batch_size": int, "return_timestamps": bool},
+        outputs={"chunks": List[Dict[str, Any]]},
+    )
+
+    hub.register(
+        model_name,
+        TaskType.AUDIO_TRANSCRIPTION,
+        Whisper,
+        init_args=(model_name,),
+        method="transcribe_raw",
+        inputs={"raw": np.ndarray, "chunk_length_s": int, "batch_size": int, "return_timestamps": bool},
         outputs={"chunks": List[Dict[str, Any]]},
     )

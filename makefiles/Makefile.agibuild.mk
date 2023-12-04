@@ -25,6 +25,18 @@ agi-build-gpu:  # equivalent to agi-build-py38-cu118 (target=base-gpu, gpu, test
 		${DOCKER_IMAGE_NAME}:${NOS_VERSION_TAG}-gpu \
 		${DOCKER_IMAGE_NAME}:latest-gpu
 
+agi-build-transcribe:  # equivalent to agi-build-py38-cu118 (target=base-gpu, gpu, test-gpu)
+	agi-pack build ${AGIPACK_ARGS} \
+		--target transcribe \
+		-c docker/agibuild.transcribe.yaml \
+		-o docker/Dockerfile.transcribe \
+		-p 3.8.15 \
+		-b nvidia/cuda:11.8.0-base-ubuntu22.04 \
+		-t 'autonomi/nos-transcribe:0.1.1-gpu'
+	docker build -f docker/Dockerfile.transcribe \
+		--target transcribe \
+		-t autonomi/nos-transcribe:0.1.1-gpu .
+
 agi-build-py38-cpu:
 	agi-pack build ${AGIPACK_ARGS} \
 		--target cpu \
