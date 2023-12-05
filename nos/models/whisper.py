@@ -42,7 +42,7 @@ class Whisper:
         ),
         "distil-whisper/distil-medium.en": WhisperConfig(
             model_name="distil-whisper/distil-medium.en",
-            torch_dtype="float16",
+            torch_dtype="float32",
         ),
         "distil-whisper/distil-large-v2": WhisperConfig(
             model_name="distil-whisper/distil-large-v2",

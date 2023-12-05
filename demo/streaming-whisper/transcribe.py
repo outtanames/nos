@@ -16,6 +16,7 @@ import threading
 from nos.externals.streamlink import open_audio_stream as open_stream
 from nos.managers import ModelHandle, ModelManager
 from nos import hub
+import torch
 
 
 def main(
@@ -37,6 +38,8 @@ def main(
     manager = ModelManager(policy=ModelManager.EvictionPolicy.FIFO, max_concurrent_models=8)
     spec = hub.load_spec(model_id)
 
+    model_id = "distil-whisper/distil-medium.en"
+
     transcription_workers = {}
 
     record_interval_delta = timedelta(seconds=record_interval)
@@ -44,7 +47,8 @@ def main(
     def transcription_worker(stream_name, stream_url):
         print("Creating transcription worker for stream: ", stream_name)
         # Set up transcription handlers and ffmpeg streams inside this thread worker:
-        handler = manager.load(spec)
+        model = manager.load(spec)
+        # model = client.Module(model_id)
         ffmpeg_process, streamlink_process = open_stream(stream_url, preferred_quality, sample_rate=sample_rate)
 
         # This only works in the main thread
@@ -84,13 +88,16 @@ def main(
 
                 # Transcribe the audio
                 audio = np.frombuffer(in_bytes, np.int16).flatten().astype(np.float32) / 32768.0
-                response: List[Dict[str, Any]] = handler.transcribe_raw(raw=audio, chunk_length_s=5)["chunks"]
+                # convert audio into a torch.HalfTensor
+                # audio_torch = torch.Tensor(audio).cuda().half()
+                response: List[Dict[str, Any]] = model.transcribe_raw(raw=audio, chunk_length_s=5)
                 if not len(response):
                     continue
 
                 # (st, _), (_, end) = response[0]["timestamp"], response[-1]["timestamp"]
                 # print date time full day, month, year and time
-                print(f"[green]{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/green]")
+                print(f"[green] stream: {stream_name}")
+                print(f"[green] {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/green]")
                 print(f"[bold white]{' '.join([s['text'] for s in response])}[/bold white]")
 
                 entry = {datetime.now().strftime("%Y-%m-%d %H:%M:%S"): [s["text"] for s in response]}
@@ -119,7 +126,7 @@ def main(
 
 if __name__ == "__main__":
     streams = {
-        "nbc": "https://www.youtube.com/watch?v=i-bRE31SGvY",
+        "nbc": "https://www.youtube.com/watch?v=723sQXS9hBI",
         "abc": "https://www.youtube.com/watch?v=agQ4ejUZ7gI"
     }
     main(streams, interval=10, preferred_quality="272p", sample_rate=16_000)
