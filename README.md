@@ -32,7 +32,7 @@
 
 ## 🏞️ Image Generation (Stable-Diffusion-as-a-Service)
 
-<img src="docs/assets/fox_jumped_over_the_moon.png" width="500" height="300">
+![hippo](docs/assets/hippo_with_glasses_sdxl.png)
 
 <table>
 <tr>
@@ -48,7 +48,7 @@ from nos.client import Client
 client = Client("[::]:50051")
 
 sdxl = client.Module("stabilityai/stable-diffusion-xl-base-1-0")
-image, = sdxl(prompts=["fox jumped over the moon"],
+image, = sdxl(prompts=["hippo with glasses in a library, cartoon styling"],
               width=1024, height=1024, num_images=1)
 ```
 
@@ -77,7 +77,7 @@ curl \
 
 ## 🧠 Text & Image Embedding (CLIP-as-a-Service)
 
-<img src="docs/assets/embedding.png" width="500" height="300">
+![embedding](docs/assets/embedding.png)
 
 <table>
 <tr>
@@ -118,7 +118,7 @@ curl \
 
 ## 🎙️ Audio Transcription (Whisper-as-a-Service)
 
-<img src="docs/assets/transcription.png" width="500" height="300">
+![transcription](docs/assets/transcription.png)
 
 <table>
 <tr>
@@ -158,7 +158,7 @@ curl \
 
 ## 🧐 Object Detection (YOLOX-as-a-Service)
 
-<img src="docs/assets/bench_park_detections.png" width="500" height="300">
+![detections](docs/assets/bench_park_detections.png)
 
 <table>
 <tr>
@@ -196,7 +196,7 @@ curl \
 
 ## 💬 Chat / LLM Agents (ChatGPT-as-a-Service)
 
-<img src="docs/assets/llama_nos.gif" width="500" height="300">
+![llama](docs/assets/llama_nos.gif)
 
 <table>
 <tr>
