@@ -15,6 +15,12 @@ import typer
 from PIL import Image
 from rich import print
 
+import sky
+from sky.backends.cloud_vm_ray_backend import CloudVmRayResourceHandle
+import requests
+from nos.client import Client
+import time
+
 from nos import hub
 from nos.common.profiler import ModelProfiler, ModelProfileRequest, Profiler
 from nos.common.spec import ModelSpec
@@ -67,10 +73,104 @@ def _model_methods(model_id: str = None) -> Iterator[Tuple[str, str, ModelSpec]]
             yield _model_id, method, spec
 
 
+def launch_profiling_cluster_with_resource(resource_name: str, cluster_name: str = None) -> CloudVmRayResourceHandle:
+    # Launch a cluster with the specified resource
+    if cluster_name is None:
+        cluster_name = f"nos-profile-{resource_name}"
+
+    # Check if the cluster already exists
+    status = sky.status(cluster_name)
+    if len(status) > 0:
+        print(f"Cluster {cluster_name} already exists")
+        status = sky.status(cluster_name)
+        return status[0]['handle']
+    
+    nos_task = sky.Task(setup='pip install torch-nos',
+            run='nos serve up --http',
+            workdir='.')
+    
+    nos_task.set_resources(sky.Resources(accelerators=resource_name, ports=['50051']))
+    
+    try:
+        sky.launch( 
+            task=nos_task,
+            cluster_name=cluster_name,
+            retry_until_up=True,
+            idle_minutes_to_autostop=30, # Kill the cluster after 30 mins of inactivity
+            down=False, # Keep it running until then
+            dryrun=False, # Turn this off when it works
+            stream_logs=True,
+        )
+    except Exception as e:
+        print(f"Failed to launch cluster {cluster_name} with resource {resource_name}")
+        print(e)
+        return
+
+
+def profile_cluster_model_id(resource_handle: CloudVmRayResourceHandle, model_id: str):
+    active_ports = resource_handle.launched_resources.ports
+    # We always use 50051 for consistency, uncler if this causes 
+    # issues for multiple nos instances on one cluster?
+    assert '50051' in active_ports
+    client = Client(f"{resource_handle.head_ip}:50051")
+    try:
+        client.WaitForServer()
+    except:
+        print(f"Failed to connect to {resource_handle.head_ip}:50051")
+        return
+    
+    if not client.IsHealthy():
+        print(f"Failed to connect to {resource_handle.head_ip}:50051")
+        return
+
+    if model_id is None:
+        model_id = "stabilityai/stable-diffusion-2-1"
+
+    models: List[str] = client.ListModels()
+    assert model_id in models
+
+    model = client.Module(model_id)
+    assert model is not None
+    assert model.GetModelInfo() is not None
+    print(f"Test [model={model_id}]")
+
+    url = "http://images.cocodataset.org/val2017/000000039769.jpg"
+    image = Image.open(requests.get(url, stream=True).raw)
+
+    # exclude model loading time
+    response = model(prompts=['astronaut on the moon'])
+
+    total_runs = 3
+    runs = []
+
+    for i in range(total_runs):
+        start_time = time.time()
+        response = model(prompts=['astronaut on the moon'])
+        end_time = time.time()
+        assert isinstance(response, dict)
+        print(f"Time taken: {end_time - start_time} seconds")
+        runs.append(end_time - start_time)
+
+    print(f"Average time taken: {sum(runs) / total_runs} seconds") 
+
+
+def profile_remote(
+    model_id: str = None, resource: str = None
+) -> Profiler:
+    """Entrypoint for profiling remote models."""
+    resource_handle = launch_profiling_cluster_with_resource(resource)
+    profile_cluster_model_id(resource_handle, model_id)
+    return
+
+
 def profile_models(
-    model_id: str = None, device_id: int = 0, save: bool = False, verbose: bool = False, catalog_path: str = None
+    model_id: str = None, device_id: int = 0, save: bool = False, verbose: bool = False, remote: str = None, catalog_path: str = None
 ) -> Profiler:
     """Main entrypoint for profiling all models."""
+
+    if remote is not None:
+        # Requested remote profiling on a specific resource
+        resource_handle = launch_profiling_cluster_with_resource(remote)
     import torch
 
     # TODO (spillai): Pytorch cuda.devices are reported in the descending order of memory,
@@ -211,15 +311,25 @@ def profile_models_with_method(
             profile_models(model_id, device_id, save, verbose, catalog_path)
 
 
+@profile_cli.command(name="remote")
+def _profile_remote(
+    model_id: str = typer.Option(..., "-m", "--model-id", help="Model identifier."),
+    resource: str = typer.Option(False, "--resource", "-r", help="Remote profiling on the given resource."),
+):
+    """Profile model on remote cluster."""
+    profile_remote(model_id="stabilityai/stable-diffusion-2-1", resource=resource)
+
+
 @profile_cli.command(name="model")
 def _profile_model(
     model_id: str = typer.Option(..., "-m", "--model-id", help="Model identifier."),
     device_id: int = typer.Option(0, "--device-id", "-d", help="Device ID to use."),
     verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose profiling."),
+    remote: str = typer.Option(False, "--remote", "-r", help="Remote profiling on the given resource."),
     catalog_path: str = typer.Option(None, "--catalog-path", "-e", help="Export path for the catalog json."),
 ):
     """Profile a specific model by its identifier."""
-    profile_models(model_id, device_id=device_id, save=True, verbose=verbose, catalog_path=catalog_path)
+    profile_models(model_id, device_id=device_id, save=True, verbose=verbose, remote=remote, catalog_path=catalog_path)
 
 
 @profile_cli.command(name="method")
