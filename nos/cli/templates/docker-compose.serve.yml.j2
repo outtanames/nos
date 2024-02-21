@@ -31,6 +31,13 @@ services:
     ipc: host
     depends_on:
       - nos-server
+{%- if runtime == 'gpu' %}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+{% endif %}
 {% endif %}
   nos-server:
     image: {{ image }}

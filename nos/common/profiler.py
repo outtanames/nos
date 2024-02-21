@@ -510,10 +510,10 @@ class ModelProfiler:
         from nos.constants import NOS_PROFILE_CATALOG_PATH
 
         shutil.copyfile(str(profile_path), str(NOS_PROFILE_CATALOG_PATH))
-
+ 
         # This is a WIP to allow us to map the profiling catalog to a
         # filemount when running in GCP etc.
-        if catalog_path is not None:
+        if catalog_path is not None and not Path(catalog_path).exists():
             # Copy the profile to the metadata catalog
             Path(catalog_path).mkdir(parents=True, exist_ok=True)
             full_catalog_path = Path(catalog_path) / profile_path.name

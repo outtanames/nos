@@ -6,3 +6,5 @@ safetensors>=0.3.0
 tabulate
 timm>=0.9.2
 transformers>=4.35.0
+skypilot-nightly[gcp]
+pytest

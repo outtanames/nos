@@ -21,6 +21,7 @@ from nos.constants import DEFAULT_GRPC_ADDRESS
 from nos.logging import logger
 from nos.protoc import import_module
 from nos.version import __version__
+from nos.cli.profile import profile_models
 
 from ._utils import decode_item, encode_item
 from .integrations.openai.models import (
@@ -212,7 +213,7 @@ def app_factory(version: str = HTTP_API_VERSION, address: str = DEFAULT_GRPC_ADD
         request: ChatCompletionsRequest,
         client: Client = Depends(get_client),
     ) -> StreamingResponse:
-        """Perform chat completion on the given input data."""
+        # Perform chat completion on the given input data.
         logger.debug(f"Received chat request [model={request.model}, messages={request.messages}]")
         _model_table = build_model_table(client)
         model_id: str = unnormalize_id(request.model)
@@ -233,7 +234,7 @@ def app_factory(version: str = HTTP_API_VERSION, address: str = DEFAULT_GRPC_ADD
         if request.stream:
 
             def openai_streaming_generator():
-                """Streaming generator for OpenAI chat completion."""
+                # Streaming generator for OpenAI chat completion.
                 # Add responses incrementally to the chat
                 choices = [DeltaChoice(delta=DeltaRole(content="", role="assistant"), index=0, finish_reason=None)]
                 yield f"data: {Completion(id=request.id, object='chat.completion.chunk', model=request.model, choices=choices).json()}\n\n"
@@ -459,8 +460,41 @@ def app_factory(version: str = HTTP_API_VERSION, address: str = DEFAULT_GRPC_ADD
                 logger.exception(f"Failed to encode response [type={type(response)}, e={e}]")
                 raise HTTPException(status_code=500, detail="Image generation failed")
 
-    return app
 
+    @app.post(f"/{version}/profile", status_code=status.HTTP_201_CREATED)
+    def profile(
+        model_id: str = Form(...),
+        # method: Optional[str] = Form(None),
+        # file: Optional[UploadFile] = File(None),
+        # url: Optional[str] = Form(None),
+        # client: Client = Depends(get_client),
+    ) -> JSONResponse:
+        """Profile the given input data using multipart/form-data.
+
+        $ curl -X POST \
+            'http://localhost:8000/v1/profile \
+            -H 'accept: application/json' \
+            -H 'Content-Type: multipart/form-data' \
+            -F 'model_id=yolox/small' \
+            -F '
+        """
+
+        # Construct a profiling request and send it to the nos profiler:
+
+        # check the number of cuda devices with torch:
+        import torch
+        if torch.cuda.is_available():
+            print(torch.cuda.device_count())
+        else:
+            print("No cuda devices available")
+
+        from nos.constants import NOS_PROFILE_CATALOG_PATH
+
+        _, catlog_path = profile_models(model_id=model_id, save=True, catalog_path=NOS_PROFILE_CATALOG_PATH)
+
+        return JSONResponse(content={"catlog_path": str(catlog_path)}, status_code=status.HTTP_201_CREATED)
+
+    return app
 
 def main():
     """Main entrypoint for the NOS REST API service / gateway."""

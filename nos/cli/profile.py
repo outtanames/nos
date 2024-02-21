@@ -165,7 +165,7 @@ def profile_remote(
 
 def profile_models(
     model_id: str = None, device_id: int = 0, save: bool = False, verbose: bool = False, remote: str = None, catalog_path: str = None
-) -> Profiler:
+):
     """Main entrypoint for profiling all models."""
 
     if remote is not None:
@@ -300,7 +300,7 @@ def profile_models(
     profiler.run()
     if save:
         profiler.save(catalog_path=catalog_path)
-    return profiler
+    return profiler, catalog_path
 
 
 def profile_models_with_method(
