@@ -84,27 +84,39 @@ def launch_profiling_cluster_with_resource(resource_name: str, cluster_name: str
         print(f"Cluster {cluster_name} already exists")
         status = sky.status(cluster_name)
         return status[0]['handle']
-    
+
+    # HACK: for now we've just added gpu and server resources to 
+    # the http gateway so we can run the full profiling flow, but 
+    # ideally this should be serialized out of the server.
+    # Below will only work with the profiling rest endpoint exposed.
+    # Only supports single model profiling for now. 
+    # TODO: are we using the right nos version for this?
     nos_task = sky.Task(setup='pip install torch-nos',
-            run='nos serve up --http',
-            workdir='.')
+            run='nos serve up --http')
+            # workdir='~/.nosd/remote') 
     
     nos_task.set_resources(sky.Resources(accelerators=resource_name, ports=['50051']))
     
     try:
-        sky.launch( 
+        print('launching cluster...')
+        id, handle = sky.launch( 
             task=nos_task,
             cluster_name=cluster_name,
             retry_until_up=True,
             idle_minutes_to_autostop=30, # Kill the cluster after 30 mins of inactivity
             down=False, # Keep it running until then
             dryrun=False, # Turn this off when it works
-            stream_logs=True,
+            stream_logs=False,
+            # detach_run=True,
         )
     except Exception as e:
         print(f"Failed to launch cluster {cluster_name} with resource {resource_name}")
         print(e)
-        return
+        raise e
+
+    print(f"Launched cluster {cluster_name} with resource {resource_name}" )
+
+    return handle
 
 
 def profile_cluster_model_id(resource_handle: CloudVmRayResourceHandle, model_id: str):
@@ -113,6 +125,7 @@ def profile_cluster_model_id(resource_handle: CloudVmRayResourceHandle, model_id
     # issues for multiple nos instances on one cluster?
     assert '50051' in active_ports
     client = Client(f"{resource_handle.head_ip}:50051")
+    print(f"Connecting to {resource_handle.head_ip}:50051...")
     try:
         client.WaitForServer()
     except:
@@ -123,12 +136,37 @@ def profile_cluster_model_id(resource_handle: CloudVmRayResourceHandle, model_id
         print(f"Failed to connect to {resource_handle.head_ip}:50051")
         return
 
-    if model_id is None:
-        model_id = "stabilityai/stable-diffusion-2-1"
-
+    assert model_id is not None
     models: List[str] = client.ListModels()
     assert model_id in models
 
+    """
+        $ curl -X POST \
+            'http://localhost:8000/v1/profile \
+            -H 'accept: application/json' \
+            -H 'Content-Type: multipart/form-data' \
+            -F 'model_id=yolox/small' \
+            -F '
+    """
+
+    print(f"Profiling {model_id}...")
+
+    res = requests.post(
+        f"http://{resource_handle.head_ip}:8000/v1/profile",
+        headers={"accept": "application/json", "Content-Type": "multipart/form-data"},
+        data={"model_id": model_id},
+    )
+
+    if res.status_code != 200:
+        print(f"Failed to profile {model_id}")
+        return
+    
+    catalog_path = res.json()["catalog_path"]
+    print("Catalog path: ", catalog_path)
+
+
+    # Old flow: just pings /infer
+    """
     model = client.Module(model_id)
     assert model is not None
     assert model.GetModelInfo() is not None
@@ -152,13 +190,24 @@ def profile_cluster_model_id(resource_handle: CloudVmRayResourceHandle, model_id
         runs.append(end_time - start_time)
 
     print(f"Average time taken: {sum(runs) / total_runs} seconds") 
+    """
 
 
 def profile_remote(
     model_id: str = None, resource: str = None
 ) -> Profiler:
     """Entrypoint for profiling remote models."""
-    resource_handle = launch_profiling_cluster_with_resource(resource)
+
+    # Launch a profiling service on the appropriate resource if it doesn't already exist
+    try:
+        resource_handle = launch_profiling_cluster_with_resource(resource)
+    except Exception as e:
+        print(f"Failed to launch cluster with resource {resource}")
+        print(e)
+        return
+
+    print("got resource handle: ", resource_handle)
+    print('profiling: ', model_id)
     profile_cluster_model_id(resource_handle, model_id)
     return
 
@@ -317,7 +366,7 @@ def _profile_remote(
     resource: str = typer.Option(False, "--resource", "-r", help="Remote profiling on the given resource."),
 ):
     """Profile model on remote cluster."""
-    profile_remote(model_id="stabilityai/stable-diffusion-2-1", resource=resource)
+    profile_remote(model_id=model_id, resource=resource)
 
 
 @profile_cli.command(name="model")
