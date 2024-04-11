@@ -301,7 +301,7 @@ def _serve(
         dockerfiles: Dict[str, Path] = builder.render(
             filename=str(NOS_SERVE_TMP_DIR / f"Dockerfile.{sandbox_name}"),
             env="prod" if prod else "dev",
-            skip_base_builds=True,
+            skip_base_builds=False,
         )
 
         # Check if several targets are defined, if so, expect the user
